@@ -238,5 +238,3 @@ All communication between systems happens over TLS encrypted connections.
 - Backlog prioritization is systematic
 
 ---
-
-*Documentation Version 1.0*
