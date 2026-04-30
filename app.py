@@ -1,11 +1,16 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import sqlite3
+import os
+
+# Delete old database if exists
+if os.path.exists('tickets.db'):
+    os.remove('tickets.db')
 
 # Create database
 conn = sqlite3.connect('tickets.db')
 conn.execute('''
-    CREATE TABLE IF NOT EXISTS tickets (
+    CREATE TABLE tickets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         issue TEXT,
@@ -54,26 +59,25 @@ class Handler(BaseHTTPRequestHandler):
                     'sn_id': r[7],
                     'jira_id': r[8]
                 })
-            print(f"📋 GET /tickets - Returned {len(tickets)} tickets")
             self._send_json(200, tickets)
-        else:
-            self._send_json(404, {'error': 'Not found'})
     
     def do_POST(self):
         if self.path == '/submit':
             length = int(self.headers['Content-Length'])
             data = json.loads(self.rfile.read(length))
             
-            print(f"📝 New ticket from: {data['name']}")
-            print(f"   Issue: {data['issue'][:50]}...")
+            name = data.get('name', 'Anonymous')
+            issue = data.get('issue', '')
+            issue_type = data.get('issue_type', 'General')
+            priority = data.get('priority', 'Medium')
             
             # Check if bug
             bug_keywords = ['bug', 'error', 'crash', 'broken', 'exception']
-            is_bug = any(k in data['issue'].lower() for k in bug_keywords) or data['issue_type'] == 'Bug / Technical Error'
+            is_bug = any(k in issue.lower() for k in bug_keywords) or issue_type == 'Bug / Technical Error'
             
             # Generate mock IDs
-            sn_id = f"INC{abs(hash(data['issue'])) % 10000}"
-            jira_id = f"DEV-{abs(hash(data['issue'])) % 5000}" if is_bug else None
+            sn_id = f"INC{abs(hash(issue)) % 10000}"
+            jira_id = f"DEV-{abs(hash(issue)) % 5000}" if is_bug else None
             
             # Save to database
             conn = sqlite3.connect('tickets.db')
@@ -81,13 +85,11 @@ class Handler(BaseHTTPRequestHandler):
             cur.execute('''
                 INSERT INTO tickets (name, issue, issue_type, priority, bug, sn_id, jira_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (data['name'], data['issue'], data['issue_type'], data['priority'], 1 if is_bug else 0, sn_id, jira_id))
+            ''', (name, issue, issue_type, priority, 1 if is_bug else 0, sn_id, jira_id))
             
             ticket_id = cur.lastrowid
             conn.commit()
             conn.close()
-            
-            print(f"✅ Created ticket #{ticket_id} (Bug: {is_bug})")
             
             self._send_json(201, {
                 'id': ticket_id,
@@ -95,8 +97,6 @@ class Handler(BaseHTTPRequestHandler):
                 'jira_id': jira_id,
                 'is_bug': is_bug
             })
-        else:
-            self._send_json(404, {'error': 'Not found'})
     
     def do_PUT(self):
         if self.path.startswith('/update/'):
@@ -110,17 +110,11 @@ class Handler(BaseHTTPRequestHandler):
             conn.commit()
             conn.close()
             
-            print(f"🔄 Updated ticket #{ticket_id} to {new_status}")
             self._send_json(200, {'id': ticket_id, 'status': new_status})
-        else:
-            self._send_json(404, {'error': 'Not found'})
 
 print("\n" + "="*50)
-print("🚀 SERVER STARTING...")
-print("📡 Running on: http://localhost:5000")
+print("🚀 SERVER RUNNING on http://localhost:5000")
 print("📋 Test API: http://localhost:5000/tickets")
-print("="*50)
-print("⚠️  Keep this window OPEN while using the system")
 print("="*50 + "\n")
 
 HTTPServer(('localhost', 5000), Handler).serve_forever()
