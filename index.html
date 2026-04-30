@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IT Support Ticket System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="text-center mb-4">
+            <h1 class="text-primary">🎫 IT Support Ticket System</h1>
+            <p class="lead">Report issues and track progress</p>
+        </div>
+
+        <!-- Submit Form -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">📝 Report an Issue</h5>
+                <form id="ticketForm">
+                    <div class="mb-3">
+                        <label class="form-label">Your Name</label>
+                        <input type="text" id="name" class="form-control" placeholder="John Smith" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Issue Description</label>
+                        <textarea id="issue" rows="3" class="form-control" placeholder="Example: Login page shows error 500" required></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Issue Type</label>
+                            <select id="issue_type" class="form-select">
+                                <option>General / IT Support</option>
+                                <option>Bug / Technical Error</option>
+                                <option>Password Reset</option>
+                                <option>Software Installation</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Priority</label>
+                            <select id="priority" class="form-select">
+                                <option>Low</option>
+                                <option selected>Medium</option>
+                                <option>High</option>
+                                <option>Critical</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">🚀 Submit Ticket</button>
+                </form>
+                <div id="result" class="mt-3"></div>
+            </div>
+        </div>
+
+        <!-- Tickets List -->
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-3">📋 All Tickets</h5>
+                <button onclick="loadTickets()" class="btn btn-secondary btn-sm mb-3">🔄 Refresh</button>
+                <div id="ticketList">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = "http://localhost:5000";
+        
+        // Submit form
+        document.getElementById("ticketForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                name: document.getElementById("name").value,
+                issue: document.getElementById("issue").value,
+                issue_type: document.getElementById("issue_type").value,
+                priority: document.getElementById("priority").value
+            };
+            
+            try {
+                const res = await fetch(`${API}/submit`, {
+                    method: "POST",
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    document.getElementById("result").innerHTML = `
+                        <div class="alert alert-success">
+                            ✅ <strong>Ticket #${data.id}</strong> created successfully!<br>
+                            🎫 ServiceNow: ${data.sn_id}<br>
+                            ${data.jira_id ? `📋 Jira Task: ${data.jira_id}<br>` : ''}
+                            ${data.is_bug ? '🐛 Bug detected - Developer assigned' : '📌 IT Support will handle this'}
+                        </div>
+                    `;
+                    document.getElementById("ticketForm").reset();
+                    loadTickets();
+                } else {
+                    document.getElementById("result").innerHTML = `<div class="alert alert-danger">❌ Failed to create ticket</div>`;
+                }
+            } catch (error) {
+                document.getElementById("result").innerHTML = `<div class="alert alert-danger">❌ Cannot connect to server. Make sure backend is running.</div>`;
+            }
+        });
+        
+        // Load tickets
+        async function loadTickets() {
+            try {
+                const res = await fetch(`${API}/tickets`);
+                const tickets = await res.json();
+                
+                if (tickets.length === 0) {
+                    document.getElementById("ticketList").innerHTML = "<p class='text-muted text-center'>No tickets yet. Create one above!</p>";
+                    return;
+                }
+                
+                let html = `<div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Issue</th>
+                                <th>Type</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>ServiceNow</th>
+                                <th>Jira</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                
+                for (let t of tickets) {
+                    let priorityClass = t.priority === 'High' || t.priority === 'Critical' ? 'danger' : (t.priority === 'Medium' ? 'warning' : 'success');
+                    let statusClass = t.status === 'Open' ? 'secondary' : (t.status === 'Resolved' ? 'success' : 'info');
+                    
+                    html += `
+                        <tr>
+                            <td><strong>#${t.id}</strong></td>
+                            <td>${t.name}</td>
+                            <td style="max-width: 250px;">${t.issue.substring(0, 60)}${t.issue.length > 60 ? '...' : ''}</td>
+                            <td>${t.issue_type} ${t.bug ? '<span class="badge bg-danger">Bug</span>' : ''}</td>
+                            <td><span class="badge bg-${priorityClass}">${t.priority}</span></td>
+                            <td><span class="badge bg-${statusClass}">${t.status}</span></td>
+                            <td>${t.sn_id || '-'}</td>
+                            <td>${t.jira_id || '-'}</td>
+                            <td>
+                                <select class="form-select form-select-sm" id="status_${t.id}" style="width: 120px; display: inline-block;">
+                                    <option ${t.status === 'Open' ? 'selected' : ''}>Open</option>
+                                    <option ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                    <option ${t.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                                </select>
+                                <button class="btn btn-sm btn-success mt-1" onclick="updateStatus(${t.id})">Update</button>
+                            </td>
+                        </tr>
+                    `;
+                }
+                
+                html += `</tbody></table></div>`;
+                document.getElementById("ticketList").innerHTML = html;
+            } catch (error) {
+                document.getElementById("ticketList").innerHTML = "<p class='text-danger'>❌ Failed to load tickets. Make sure backend is running on port 5000.</p>";
+            }
+        }
+        
+        // Update status
+        async function updateStatus(id) {
+            const status = document.getElementById(`status_${id}`).value;
+            
+            try {
+                const res = await fetch(`${API}/update/${id}`, {
+                    method: "PUT",
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({status: status})
+                });
+                
+                if (res.ok) {
+                    alert(`✅ Ticket #${id} updated to ${status}`);
+                    loadTickets();
+                } else {
+                    alert(`❌ Failed to update ticket`);
+                }
+            } catch (error) {
+                alert(`❌ Cannot connect to server`);
+            }
+        }
+        
+        // Load on start
+        loadTickets();
+    </script>
+</body>
+</html>
